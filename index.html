@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Galaxy Privacy Screen — Polyfill Demo</title>
+
+  <!--
+      ================================================================
+      POLYFILL STYLES
+      The [privacyscreen] attribute is the core of the polyfill.
+      It is a **boolean** attribute: its mere presence activates
+      protection (like `disabled` or `readonly`). Remove the
+      attribute to deactivate.
+      ================================================================
+  -->
+  <style>
+    /* ---- Polyfill core ---- */
+    [privacyscreen] {
+      position: relative;
+      --ps-intensity: 0;
+      --ps-blur: 0px;
+    }
+
+    /* Blur + fade every direct child except the overlay */
+    [privacyscreen]>*:not(.ps-overlay) {
+      filter: blur(var(--ps-blur));
+      opacity: calc(1 - (var(--ps-intensity) * 0.45));
+      transition: filter .12s ease-out, opacity .12s ease-out;
+      will-change: filter, opacity;
+    }
+
+    /* Simulated hardware microlouver layer */
+    .ps-overlay {
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      z-index: 9999;
+      pointer-events: none;
+      background-color: rgba(10, 15, 25, calc(var(--ps-intensity) * 0.25));
+      background-image: repeating-linear-gradient(0deg,
+          rgba(0, 0, 0, 0) 0px,
+          rgba(0, 0, 0, 0) 2px,
+          rgba(0, 0, 0, calc(var(--ps-intensity) * 0.4)) 2px,
+          rgba(0, 0, 0, calc(var(--ps-intensity) * 0.4)) 4px);
+      transition: background-color .12s ease-out;
+    }
+
+    /* ---- Demo UI ---- */
+    :root {
+      --bg: #eef1f6;
+      --card: #ffffff;
+      --text: #1a1a2e;
+      --muted: #64748b;
+      --primary: #1a73e8;
+      --primary-hover: #1557b0;
+      --danger: #dc2626;
+      --success: #16a34a;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: row;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+      gap: 24px;
+      overflow-x: hidden;
+    }
+
+    /* ---- Global control panel (outside the app) ---- */
+    .global-controls {
+      width: 390px;
+      min-width: 390px;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      padding: 18px 20px;
+      border-radius: 16px;
+      box-shadow: 0 4px 12px -4px rgba(0, 0, 0, .1);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .global-controls .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .global-controls p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .phone {
+      width: 390px;
+      min-width: 390px;
+      background: var(--card);
+      border-radius: 44px;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, .3);
+      border: 12px solid #0a0a0a;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      min-height: 720px;
+    }
+
+    .app-header {
+      background: linear-gradient(135deg, #1a73e8, #0d47a1);
+      color: #fff;
+      padding: 48px 24px 28px;
+      text-align: center;
+    }
+
+    .app-header h2 {
+      margin: 0 0 4px;
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .app-header p {
+      margin: 0;
+      font-size: 13px;
+      opacity: .8;
+    }
+
+    .app-body {
+      padding: 24px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* ---- Bank account card (protected element) ---- */
+    .account-card {
+      background: linear-gradient(135deg, #1e293b, #0f172a);
+      color: #fff;
+      padding: 28px 24px;
+      border-radius: 20px;
+      box-shadow: 0 10px 20px -5px rgba(0, 0, 0, .2);
+    }
+
+    .account-card .label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: #94a3b8;
+      margin: 0 0 8px;
+    }
+
+    .account-card .balance {
+      font-size: 38px;
+      font-weight: 700;
+      margin: 0;
+      letter-spacing: -1px;
+    }
+
+    .account-card .acct-no {
+      font-family: "Courier New", monospace;
+      font-size: 14px;
+      color: #cbd5e1;
+      margin-top: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .account-card .card-type {
+      margin-top: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .account-card .chip {
+      width: 40px;
+      height: 28px;
+      background: linear-gradient(135deg, #fbbf24, #f59e0b);
+      border-radius: 6px;
+    }
+
+    .account-card .brand {
+      font-size: 16px;
+      font-weight: 700;
+      font-style: italic;
+      color: #94a3b8;
+    }
+
+    /* ---- Transactions list ---- */
+    .transactions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .transactions h3 {
+      font-size: 14px;
+      color: var(--muted);
+      margin: 0 0 4px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+
+    .txn {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 14px;
+      background: #f8fafc;
+      border-radius: 12px;
+      font-size: 14px;
+    }
+
+    .txn .desc {
+      font-weight: 500;
+    }
+
+    .txn .amt {
+      font-weight: 600;
+    }
+
+    .txn .amt.neg {
+      color: var(--danger);
+    }
+
+    .txn .amt.pos {
+      color: var(--success);
+    }
+
+    /* ---- Toggle switch (shared) ---- */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 52px;
+      height: 28px;
+      flex-shrink: 0;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background: #cbd5e1;
+      border-radius: 28px;
+      transition: .3s;
+    }
+
+    .slider::before {
+      content: "";
+      position: absolute;
+      height: 22px;
+      width: 22px;
+      left: 3px;
+      bottom: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: .3s;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, .2);
+    }
+
+    input:checked+.slider {
+      background: var(--primary);
+    }
+
+    input:checked+.slider::before {
+      transform: translateX(24px);
+    }
+  </style>
+</head>
+
+<body>
+
+  <!--
+      ================================================================
+      GLOBAL CONTROL PANEL (outside the app)
+      The master toggle lives here. The same toggle also appears
+      inside each protected area for convenience.
+      ================================================================
+  -->
+
+  <div class="phone">
+    <!-- App header -->
+    <div class="app-header">
+      <h2>Galaxy Bank</h2>
+      <p>Privacy Screen Polyfill Demo</p>
+    </div>
+
+    <div class="app-body">
+      <!--
+          ====================================================
+          PROTECTED ELEMENTS
+          The `privacyscreen` attribute is a **boolean**
+          attribute. Its presence = ON; its absence = OFF.
+          ====================================================
+      -->
+      <div class="account-card">
+        <p class="label">Total Balance</p>
+        <p class="balance">$1,459,230.00</p>
+        <div class="acct-no">
+          <span>•••• •••• •••• 5591</span>
+        </div>
+        <div class="card-type">
+          <div class="chip"></div>
+          <span class="brand">VISA</span>
+        </div>
+      </div>
+
+      <!-- Transactions (also protected) -->
+      <div class="transactions">
+        <h3>Recent Transactions</h3>
+        <div class="txn">
+          <span class="desc">Salary Deposit</span>
+          <span class="amt pos">+$8,500.00</span>
+        </div>
+        <div class="txn">
+          <span class="desc">Amazon Purchase</span>
+          <span class="amt neg">-$129.99</span>
+        </div>
+        <div class="txn">
+          <span class="desc">Transfer to Savings</span>
+          <span class="amt neg">-$2,000.00</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="global-controls">
+    <strong>Privacy Screen</strong>
+
+    <div class="row">
+      <span>Enable protection</span>
+      <label class="switch">
+        <input type="checkbox" id="toggle">
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <p>
+      When enabled, content marked as sensitive blurs based on your viewing angle.
+      On desktop, move your mouse away from the phone to simulate an
+      off-axis viewer. On mobile, tilt your device. All protected areas
+      react in parallel — just like a real hardware privacy screen.
+    </p>
+
+    <p><strong>In order to mark content as sensitive, add a <code>privacyscreen</code> attribute to it via the
+        DevTools.</strong></p>
+  </div>
+
+  <!--
+      ================================================================
+      POLYFILL JAVASCRIPT
+      This script implements the `privacyscreen` boolean attribute:
+       • MutationObserver watches for attribute additions/removals
+       • A microlouver overlay div is injected into protected elements
+       • Mouse distance (desktop) or gyroscope tilt (mobile) drives
+         a SINGLE global blur intensity applied to ALL protected
+         elements in parallel — simulating a real hardware screen.
+      ================================================================
+  -->
+  <script>
+    (function () {
+      "use strict";
+
+      let screenActive = false
+
+      var ATTR = "privacyscreen";
+      var OVERLAY_CLASS = "ps-overlay";
+
+      /* ----------------------------------------------------------------
+         Core: apply / remove the overlay on protected elements
+         Boolean attribute: presence = protected, absence = not.
+      ---------------------------------------------------------------- */
+      function isProtected(el) {
+        return el.hasAttribute && el.hasAttribute(ATTR);
+      }
+
+      function applyProtection(el) {
+        if (!el.querySelector("." + OVERLAY_CLASS)) {
+          var overlay = document.createElement("div");
+          overlay.className = OVERLAY_CLASS;
+          el.appendChild(overlay);
+        }
+      }
+
+      function removeProtection(el) {
+        var overlay = el.querySelector("." + OVERLAY_CLASS);
+        if (overlay) overlay.remove();
+        el.style.removeProperty("--ps-intensity");
+        el.style.removeProperty("--ps-blur");
+      }
+
+      /* ----------------------------------------------------------------
+         MutationObserver: react to attribute toggles & new elements
+         For a boolean attribute we detect presence (hasAttribute).
+      ---------------------------------------------------------------- */
+      var observer = new MutationObserver(function (mutations) {
+        mutations.forEach(function (m) {
+          if (m.type === "attributes" && m.attributeName === ATTR) {
+            var el = m.target;
+            if (isProtected(el)) {
+              applyProtection(el);
+            } else {
+              removeProtection(el);
+            }
+          }
+          if (m.type === "childList") {
+            m.addedNodes.forEach(function (node) {
+              if (node.nodeType !== 1) return;
+              if (isProtected(node)) {
+                applyProtection(node);
+              }
+              var children = node.querySelectorAll
+                ? node.querySelectorAll("[" + ATTR + "]")
+                : [];
+              children.forEach(applyProtection);
+            });
+          }
+        });
+      });
+
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: [ATTR]
+      });
+
+      // Protect any elements that are already boolean-protected at load
+      document.addEventListener("DOMContentLoaded", function () {
+        document.querySelectorAll("[" + ATTR + "]").forEach(applyProtection);
+      });
+
+      /*
+        ----------------------------------------------------------------
+        Sensor simulation  —  PARALLEL mode
+        A single intensity is computed from the global pointer /
+        tilt position and applied to ALL protected elements at once,
+        just like a real hardware privacy screen.
+
+        Desktop  → mouse distance from the phone mockup rect
+        Mobile   → deviceorientation gamma (left-right tilt)
+        ----------------------------------------------------------------
+      */
+      var hasGyro = false;
+
+      function distanceFromRect(x, y, rect) {
+        var dx = Math.max(rect.left - x, 0, x - rect.right);
+        var dy = Math.max(rect.top - y, 0, y - rect.bottom);
+        return Math.sqrt(dx * dx + dy * dy);
+      }
+
+      function setIntensity(el, level) {
+        el.style.setProperty("--ps-intensity", level.toFixed(3));
+        el.style.setProperty("--ps-blur", (level * 12).toFixed(1) + "px");
+      }
+
+      /* Apply the same level to every protected element simultaneously */
+      function applyGlobalIntensity(level) {
+        if (!screenActive) level = 0
+        document.querySelectorAll("[" + ATTR + "]").forEach(function (el) {
+          setIntensity(el, level);
+        });
+      }
+
+      // Mobile: gyroscope
+      window.addEventListener("deviceorientation", function (e) {
+        if (e.gamma === null || e.beta === null) return;
+        hasGyro = true;
+        requestAnimationFrame(function () {
+          var gammaDiff = Math.abs(e.gamma);
+          var level = Math.max(0, (gammaDiff - 15) / 25);
+          level = Math.min(1, level);
+          applyGlobalIntensity(level);
+        });
+      });
+
+      // Desktop: mouse position — compute ONE level from the phone rect
+      window.addEventListener("mousemove", function (e) {
+        if (hasGyro) return;
+        requestAnimationFrame(function () {
+          var phone = document.querySelector(".phone");
+          var rect = phone.getBoundingClientRect();
+          var dist = distanceFromRect(e.clientX, e.clientY, rect);
+          var MIN = 40, MAX = 300;
+          var level = 0;
+          if (dist > MIN) {
+            level = (dist - MIN) / (MAX - MIN);
+          }
+          level = Math.min(1, Math.max(0, level));
+          applyGlobalIntensity(level);
+        });
+      });
+
+      // When mouse leaves the window, fully obscure
+      document.addEventListener("mouseleave", function () {
+        if (hasGyro) return;
+        applyGlobalIntensity(1);
+      });
+
+      /*
+        ----------------------------------------------------------------
+        Demo UI: master toggle (global) + in-area toggles
+        All toggles are kept in sync.
+        ----------------------------------------------------------------
+      */
+      var toggleSw = document.getElementById("toggle");
+
+      function setPrivacy(on) {
+        screenActive = on
+      }
+
+      toggleSw.addEventListener("change", function () {
+        setPrivacy(toggleSw.checked);
+      });
+    })();
+  </script>
+</body>
+
+</html>
